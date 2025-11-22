@@ -1,20 +1,18 @@
-import os
-os.environ["PYTHONWATCHMAN_DISABLE"] = "true"
-os.environ["STREAMLIT_WATCH_SYSTEM"] = "false"
-os.environ["ST_DISABLE_FILE_WATCHER"] = "1"
+"""
+Academic Program Predictor - Streamlit Application
+Clean, production-ready code
+"""
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 import warnings
 warnings.filterwarnings('ignore')
 
-
-# Page configuration
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
 st.set_page_config(
     page_title="Academic Program Predictor",
     page_icon="🎓",
@@ -22,235 +20,335 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# ============================================================================
+# CUSTOM CSS
+# ============================================================================
 st.markdown("""
     <style>
     .main {
-        background-color: #f5f7fa;
+        background-color: #f8fafc;
     }
-    .stAlert {
+    .stButton>button {
+        width: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        font-size: 1.1rem;
+        font-weight: 600;
         border-radius: 10px;
+        transition: all 0.3s ease;
     }
-    div[data-testid="stMetricValue"] {
-        font-size: 28px;
-        font-weight: bold;
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
-    .prediction-box {
-        padding: 20px;
-        border-radius: 10px;
+    .prediction-card {
+        padding: 2rem;
+        border-radius: 15px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         text-align: center;
-        margin: 20px 0;
+        margin: 2rem 0;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
-    .confidence-box {
-        padding: 15px;
-        border-radius: 8px;
-        background-color: #e8f5e9;
-        border-left: 4px solid #4caf50;
-        margin: 10px 0;
-    }
-    .feature-card {
-        padding: 15px;
+    .metric-card {
+        padding: 1.5rem;
         border-radius: 10px;
-        background-color: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin: 10px 0;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        text-align: center;
     }
-    h1 {
-        color: #1e3a8a;
+    .prob-bar {
+        background-color: #e5e7eb;
+        border-radius: 10px;
+        height: 40px;
+        margin-top: 10px;
+        overflow: hidden;
+        position: relative;
     }
-    h2 {
-        color: #3b82f6;
+    .prob-fill {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        transition: width 0.5s ease;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# Job classification function
-job_groups = {
-    'ai_data_ml': [
-        'data scientist', 'associate data scientist', 'business analyst',
-        'data analyst', 'data analytics', 'machine learning',
-        'ml engineer', 'ai', 'cloud transformation'
+# ============================================================================
+# JOB CLASSIFICATION
+# ============================================================================
+JOB_GROUPS = {
+    'software_engineering': [
+        'software engineer', 'software design engineer', 'system development engineer',
+        'full stack developer', 'python developer', 'qa engineer', 'digital engineer'
+    ],
+    'data_science': [
+        'data scientist', 'associate data scientist', 'data analyst', 'data analytics',
+        'ai', 'ai-validation', 'ml engineer', 'machine learning', 'cloud transformation'
     ],
     'cyber_security': [
-        'security analyst', 'security engineer', 'cyber security',
-        'application security', 'information security',
-        'threat intelligence', 'network security'
+        'associate security engineer', 'security analyst', 'application security engineer',
+        'cyber security engineer', 'cyber security', 'network security engineering',
+        'information security', 'intelligence analyst', 'cyber threat intelligence'
     ],
-    'software_engineering': [
-        'software engineer', 'software design engineer',
-        'system development engineer', 'developer', 'python',
-        'full stack', 'qa engineer', 'engineer', 'digital engineer',
-        'digital media analyst', 'geospatial analyst'
+    'marketing_sales': [
+        'marketing', 'marketing executive', 'sales development', 'sales trainee',
+        'business development', 'business development trainee'
     ],
     'business_management': [
-        'manager', 'management trainee', 'consultant-functional',
-        'operations associate', 'academic associate', 'teacher',
-        'ecologist', 'analyst', 'marketing', 'business development', 
-        'sales trainee', 'sales development', 'business development trainee'
+        'manager', 'management trainee', 'consultant-functional', 'business analyst',
+        'operations associate', 'academic associate', 'teacher', 'ecologist'
     ],
-    'others': []
+    'internship': ['internship with placement'],
+    'others': ['geospatial analyst', 'digital media analyst', 'engineer']
 }
 
 def classify_job(title):
-    """Classify job title into job groups"""
+    """Classify job title into predefined groups"""
+    if not title:
+        return 'others'
+    
     title = str(title).lower().strip()
-    for group, keywords in job_groups.items():
+    for group, keywords in JOB_GROUPS.items():
         for keyword in keywords:
-            if keyword.lower() in title:
+            if keyword in title:
                 return group
     return 'others'
 
+# ============================================================================
+# MODEL LOADING
+# ============================================================================
 @st.cache_resource
 def load_model():
-    """Load the trained model and artifacts"""
+    """Load the trained model and preprocessing artifacts"""
     try:
-        with open('program_prediction_model.pkl', 'rb') as f:
-            model_artifacts = pickle.load(f)
-        return model_artifacts
-    except FileNotFoundError:
-        st.error("⚠️ Model file not found! Please train the model first.")
+        with open('model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        with open('encoders.pkl', 'rb') as f:
+            encoders = pickle.load(f)
+        with open('scaler.pkl', 'rb') as f:
+            scaler = pickle.load(f)
+        return {'model': model, 'encoders': encoders, 'scaler': scaler}
+    except FileNotFoundError as e:
+        st.error(f"⚠️ Model files not found: {e}")
+        st.info("Please ensure model.pkl, encoders.pkl, and scaler.pkl are in the app directory.")
+        return None
+    except Exception as e:
+        st.error(f"❌ Error loading model: {e}")
         return None
 
-def predict_program(company, job_role, package, model_artifacts):
-    """Make prediction using the trained model"""
+# ============================================================================
+# PREDICTION FUNCTION
+# ============================================================================
+def make_prediction(company, job_role, package, model_artifacts):
+    """Make program prediction based on inputs"""
     model = model_artifacts['model']
     scaler = model_artifacts['scaler']
     encoders = model_artifacts['encoders']
     
-    features = {}
-    
-    # Handle Company
+    # Process company
+    company_encoded = 0
     if company:
+        company = company.lower().strip()
         try:
             company_encoded = encoders['company'].transform([company])[0]
-            features['company_encoded'] = company_encoded
         except ValueError:
-            features['company_encoded'] = len(encoders['company'].classes_) // 2
-    else:
-        features['company_encoded'] = len(encoders['company'].classes_) // 2
+            # Unknown company - use median
+            company_encoded = len(encoders['company'].classes_) // 2
     
-    # Handle Job Role
-    if job_role:
-        job_group = classify_job(job_role)
-        try:
-            job_encoded = encoders['job'].transform([job_group])[0]
-            features['job_group_encoded'] = job_encoded
-        except ValueError:
-            features['job_group_encoded'] = 0
-    else:
-        features['job_group_encoded'] = 0
+    # Process job role
+    job_group = classify_job(job_role)
+    job_group_encoded = 0
+    try:
+        job_group_encoded = encoders['job_group'].transform([job_group])[0]
+    except ValueError:
+        job_group_encoded = 0
     
-    # Handle Package
-    if package:
-        package_group = pd.cut([package], bins=encoders['bins'], 
-                              labels=encoders['labels'], include_lowest=True)[0]
-        features['package_group'] = int(package_group)
-    else:
-        features['package_group'] = 2
+    # Process package
+    package_group = 1  # Default to middle range
+    if package is not None:
+        if package <= 5:
+            package_group = 0
+        elif package <= 10:
+            package_group = 1
+        else:
+            package_group = 2
     
-    # Create and scale feature array
-    feature_array = np.array([[
-        features['company_encoded'],
-        features['job_group_encoded'],
-        features['package_group']
-    ]])
-    feature_scaled = scaler.transform(feature_array)
+    # Create feature array
+    features = np.array([[company_encoded, job_group_encoded, package_group]])
+    features_scaled = scaler.transform(features)
     
     # Make prediction
-    prediction_encoded = model.predict(feature_scaled)[0]
-    prediction_proba = model.predict_proba(feature_scaled)[0]
-    prediction = encoders['program'].inverse_transform([prediction_encoded])[0]
+    prediction_encoded = model.predict(features_scaled)[0]
+    probabilities = model.predict_proba(features_scaled)[0]
+    
+    # Decode prediction
+    predicted_program = encoders['program'].inverse_transform([prediction_encoded])[0]
+    
+    # Create probability dictionary
+    prob_dict = {}
+    for i, prob in enumerate(probabilities):
+        program = encoders['program'].inverse_transform([i])[0]
+        prob_dict[program] = prob
     
     return {
-        'predicted_program': prediction,
-        'confidence': prediction_proba[prediction_encoded],
-        'all_probabilities': {
-            encoders['program'].classes_[i]: prob 
-            for i, prob in enumerate(prediction_proba)
-        },
-        'job_group': classify_job(job_role) if job_role else 'Not provided'
+        'predicted_program': predicted_program,
+        'confidence': probabilities[prediction_encoded],
+        'probabilities': prob_dict,
+        'job_group': job_group
     }
 
-def create_probability_chart(probabilities):
-    """Create an interactive bar chart for probabilities"""
-    programs = list(probabilities.keys())
-    probs = list(probabilities.values())
-    
-    colors = ['#667eea' if p == max(probs) else '#a5b4fc' for p in probs]
-    
-    fig = go.Figure(data=[
-        go.Bar(
-            x=programs,
-            y=probs,
-            marker_color=colors,
-            text=[f'{p:.1%}' for p in probs],
-            textposition='outside',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Prediction Probabilities",
-        xaxis_title="Academic Program",
-        yaxis_title="Probability",
-        yaxis_range=[0, 1],
-        height=400,
-        showlegend=False,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-    )
-    
-    return fig
-
-def create_confidence_gauge(confidence):
-    """Create a gauge chart for confidence"""
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=confidence * 100,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Confidence Level", 'font': {'size': 24}},
-        delta={'reference': 70},
-        gauge={
-            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': "darkblue"},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
-            'steps': [
-                {'range': [0, 50], 'color': '#fee2e2'},
-                {'range': [50, 75], 'color': '#fef3c7'},
-                {'range': [75, 100], 'color': '#d1fae5'}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 90
-            }
-        }
-    ))
-    
-    fig.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=50, b=20),
-        paper_bgcolor='rgba(0,0,0,0)',
-        font={'color': "darkblue", 'family': "Arial"}
-    )
-    
-    return fig
-
-# Main App
-def main():
-    # Header
+# ============================================================================
+# UI COMPONENTS
+# ============================================================================
+def display_header():
+    """Display application header"""
     st.markdown("""
-        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-        border-radius: 10px; margin-bottom: 30px;'>
-            <h1 style='color: white; margin: 0;'>🎓 Academic Program Predictor</h1>
-            <p style='color: white; font-size: 18px; margin-top: 10px;'>
+        <div style='text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        border-radius: 15px; margin-bottom: 2rem;'>
+            <h1 style='color: white; margin: 0; font-size: 2.5rem;'>🎓 Academic Program Predictor</h1>
+            <p style='color: white; font-size: 1.2rem; margin-top: 0.5rem;'>
                 AI-Powered Career Path Recommendation System
             </p>
         </div>
     """, unsafe_allow_html=True)
+
+def display_sidebar(model_artifacts):
+    """Display sidebar with information"""
+    with st.sidebar:
+        st.markdown("### 🔍 About")
+        st.info("""
+            This AI-powered system predicts the most suitable academic program 
+            based on your company, job role, and package information.
+        """)
+        
+        st.markdown("---")
+        
+        st.markdown("### 📊 Model Info")
+        st.write(f"**Algorithm:** XGBoost Classifier")
+        st.write(f"**Programs:** {len(model_artifacts['encoders']['program'].classes_)}")
+        st.write(f"**Features:** 3 (Company, Job, Package)")
+        
+        st.markdown("---")
+        
+        st.markdown("### 📚 Available Programs")
+        programs = sorted(model_artifacts['encoders']['program'].classes_)
+        for prog in programs:
+            st.write(f"• {prog.upper()}")
+
+def display_results(result):
+    """Display prediction results"""
+    # Main prediction card
+    st.markdown(f"""
+        <div class='prediction-card'>
+            <h2 style='color: white; margin: 0; font-size: 1.5rem;'>Recommended Program</h2>
+            <h1 style='color: white; font-size: 3rem; margin: 1rem 0;'>
+                {result['predicted_program'].upper()}
+            </h1>
+            <p style='color: white; font-size: 1.2rem; margin: 0;'>
+                Confidence: {result['confidence']:.1%}
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        confidence_color = "#22c55e" if result['confidence'] > 0.7 else "#f59e0b" if result['confidence'] > 0.5 else "#ef4444"
+        st.markdown(f"""
+            <div class='metric-card'>
+                <h3 style='color: {confidence_color}; margin: 0;'>{result['confidence']:.1%}</h3>
+                <p style='color: #6b7280; margin: 0.5rem 0 0 0;'>Confidence Level</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <h3 style='color: #3b82f6; margin: 0;'>{result['job_group'].replace('_', ' ').title()}</h3>
+                <p style='color: #6b7280; margin: 0.5rem 0 0 0;'>Job Category</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        rank_2 = sorted(result['probabilities'].items(), key=lambda x: x[1], reverse=True)[1]
+        st.markdown(f"""
+            <div class='metric-card'>
+                <h3 style='color: #8b5cf6; margin: 0;'>{rank_2[0].upper()}</h3>
+                <p style='color: #6b7280; margin: 0.5rem 0 0 0;'>2nd Choice ({rank_2[1]:.1%})</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Probability breakdown
+    st.markdown("---")
+    st.markdown("### 📊 All Program Probabilities")
+    
+    sorted_probs = sorted(result['probabilities'].items(), key=lambda x: x[1], reverse=True)
+    
+    for i, (program, prob) in enumerate(sorted_probs):
+        icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "📌"
+        
+        col_prog, col_bar = st.columns([1, 3])
+        
+        with col_prog:
+            st.markdown(f"**{icon} {program.upper()}**")
+        
+        with col_bar:
+            st.markdown(f"""
+                <div class='prob-bar'>
+                    <div class='prob-fill' style='width: {prob*100}%;'>
+                        {prob:.1%}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+    
+    # Recommendations
+    st.markdown("---")
+    st.markdown("### 💡 Interpretation")
+    
+    if result['confidence'] > 0.75:
+        st.success(f"""
+            **High Confidence Prediction** ✅
+            
+            The model is highly confident that **{result['predicted_program'].upper()}** is the best 
+            fit for your profile. This recommendation is based on strong patterns in the training data.
+        """)
+    elif result['confidence'] > 0.55:
+        st.info(f"""
+            **Moderate Confidence Prediction** ℹ️
+            
+            The model suggests **{result['predicted_program'].upper()}** as the top choice, but also 
+            recommends considering **{sorted_probs[1][0].upper()}** ({sorted_probs[1][1]:.1%}) as an 
+            alternative option.
+        """)
+    else:
+        st.warning(f"""
+            **Lower Confidence Prediction** ⚠️
+            
+            The prediction shows moderate confidence. Consider:
+            - Providing more specific information
+            - Exploring multiple program options
+            
+            Top recommendations:
+            1. **{sorted_probs[0][0].upper()}** ({sorted_probs[0][1]:.1%})
+            2. **{sorted_probs[1][0].upper()}** ({sorted_probs[1][1]:.1%})
+        """)
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+def main():
+    """Main application logic"""
+    
+    # Display header
+    display_header()
     
     # Load model
     model_artifacts = load_model()
@@ -258,275 +356,117 @@ def main():
     if model_artifacts is None:
         st.stop()
     
-    # Sidebar
-    with st.sidebar:
-        st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=100)
-        st.title("🔍 Input Features")
-        st.markdown("---")
-        
-        # Model information
-        with st.expander("ℹ️ About the Model", expanded=False):
-            st.write(f"**Model Type:** {model_artifacts['model_name']}")
-            st.write(f"**Features:** 3 (Company, Job Role, Package)")
-            st.write(f"**Programs:** {len(model_artifacts['encoders']['program'].classes_)}")
-            st.write("**Training:** GridSearchCV with 5-fold CV")
-        
-        st.markdown("---")
-        
-        # Input mode selection
-        input_mode = st.radio(
-            "Select Input Mode:",
-            ["🎯 Guided Input", "✏️ Manual Entry"],
-            help="Choose how you want to provide information"
+    # Display sidebar
+    display_sidebar(model_artifacts)
+    
+    # Main input section
+    st.markdown("## 📝 Enter Your Information")
+    st.markdown("Provide at least one of the following fields for better predictions:")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 🏢 Company")
+        companies = [''] + sorted(list(model_artifacts['encoders']['company'].classes_))
+        company = st.selectbox(
+            "Select or type company name",
+            companies,
+            help="Choose from known companies or leave blank"
         )
         
-        st.markdown("---")
+        if not company:
+            company_custom = st.text_input("Or enter company name:", placeholder="e.g., IBM, Google")
+            if company_custom:
+                company = company_custom
+        
+        st.markdown("#### 💼 Job Role")
+        job_examples = [
+            '',
+            'Data Scientist',
+            'Software Engineer',
+            'Cyber Security Analyst',
+            'Business Analyst',
+            'Full Stack Developer',
+            'ML Engineer'
+        ]
+        job_role = st.selectbox(
+            "Select or type job role",
+            job_examples,
+            help="Select from examples or enter custom role"
+        )
+        
+        if not job_role:
+            job_custom = st.text_input("Or enter job role:", placeholder="e.g., Python Developer")
+            if job_custom:
+                job_role = job_custom
     
-    # Main content area
-    if input_mode == "🎯 Guided Input":
-        st.subheader("📝 Enter Your Details")
+    with col2:
+        st.markdown("#### 💰 Package Information")
         
-        col1, col2 = st.columns(2)
+        package_input_type = st.radio(
+            "Input method:",
+            ["Slider", "Text Input"],
+            horizontal=True
+        )
         
-        with col1:
-            st.markdown("### 🏢 Company Information")
-            companies = [''] + list(model_artifacts['encoders']['company'].classes_)
-            company = st.selectbox(
-                "Select Company",
-                companies,
-                help="Choose from the list of known companies"
-            )
-            
-            if not company:
-                st.info("💡 Tip: Selecting a company improves prediction accuracy!")
-        
-        with col2:
-            st.markdown("### 💼 Job Details")
-            job_role_examples = [
-                '', 
-                'Data Scientist', 
-                'Software Engineer', 
-                'Cyber Security Analyst',
-                'Machine Learning Engineer',
-                'Full Stack Developer',
-                'Business Analyst',
-                'Security Engineer'
-            ]
-            job_role = st.selectbox(
-                "Select or Type Job Role",
-                job_role_examples,
-                help="Select from examples or type your own"
-            )
-            
-            if not job_role:
-                job_role_custom = st.text_input("Or enter custom job role:")
-                if job_role_custom:
-                    job_role = job_role_custom
-        
-        st.markdown("### 💰 Package Information")
-        col3, col4 = st.columns([2, 1])
-        
-        with col3:
+        if package_input_type == "Slider":
             package = st.slider(
-                "Salary Package (LPA)",
+                "Annual Package (LPA)",
                 min_value=0.0,
                 max_value=20.0,
                 value=6.0,
                 step=0.5,
-                help="Slide to select your package range"
+                help="Select your salary package"
             )
-        
-        with col4:
-            st.metric("Selected Package", f"₹{package} LPA")
-    
-    else:  # Manual Entry
-        st.subheader("✏️ Manual Entry Mode")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            company = st.text_input(
-                "Company Name",
-                placeholder="e.g., IBM, Google, Microsoft",
-                help="Enter company name (optional)"
-            )
-        
-        with col2:
-            job_role = st.text_input(
-                "Job Role",
-                placeholder="e.g., Data Scientist",
-                help="Enter your job role (optional)"
-            )
-        
-        with col3:
-            package_input = st.text_input(
-                "Package (LPA)",
+        else:
+            package_text = st.text_input(
+                "Enter package (LPA):",
                 placeholder="e.g., 8.5",
-                help="Enter package in lakhs (optional)"
+                help="Enter package in lakhs per annum"
             )
+            package = float(package_text) if package_text else None
+        
+        if package:
+            st.metric("Selected Package", f"₹{package} LPA")
             
-            package = float(package_input) if package_input else None
+            # Show package range
+            if package <= 5:
+                st.info("📊 Range: 0-5 LPA")
+            elif package <= 10:
+                st.info("📊 Range: 5-10 LPA")
+            else:
+                st.info("📊 Range: 10+ LPA")
     
     # Prediction button
     st.markdown("---")
     
     col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+    
     with col_btn2:
-        predict_button = st.button("🚀 Predict Program", type="primary", use_container_width=True)
+        predict_button = st.button("🚀 Predict Program", use_container_width=True)
     
     # Make prediction
     if predict_button:
         if not company and not job_role and not package:
-            st.warning("⚠️ Please provide at least one input feature for better predictions!")
+            st.warning("⚠️ Please provide at least one input for prediction!")
         else:
             with st.spinner("🔮 Analyzing your profile..."):
-                result = predict_program(
-                    company if company else None,
-                    job_role if job_role else None,
-                    package,
-                    model_artifacts
-                )
+                result = make_prediction(company, job_role, package, model_artifacts)
             
-            # Display results
             st.success("✅ Prediction Complete!")
-            
-            # Main prediction result
-            st.markdown(f"""
-                <div class='prediction-box'>
-                    <h2 style='color: white; margin: 0;'>Recommended Program</h2>
-                    <h1 style='color: white; font-size: 48px; margin: 10px 0;'>
-                        {result['predicted_program']}
-                    </h1>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Metrics row
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric(
-                    "Confidence",
-                    f"{result['confidence']:.1%}",
-                    delta=f"{result['confidence']-0.7:.1%}" if result['confidence'] > 0.7 else None
-                )
-            
-            with col2:
-                st.metric(
-                    "Company",
-                    company if company else "Default",
-                    delta="Provided" if company else "Default"
-                )
-            
-            with col3:
-                st.metric(
-                    "Job Group",
-                    result['job_group'].replace('_', ' ').title(),
-                    delta="Classified" if job_role else "Default"
-                )
-            
-            with col4:
-                st.metric(
-                    "Package",
-                    f"₹{package if package else 'N/A'} LPA",
-                    delta="Provided" if package else "Default"
-                )
-            
-            st.markdown("---")
-            
-            # Detailed results
-            col_left, col_right = st.columns([1, 1])
-            
-            with col_left:
-                st.markdown("### 📊 Probability Distribution")
-                fig_probs = create_probability_chart(result['all_probabilities'])
-                st.plotly_chart(fig_probs, use_container_width=True)
-            
-            with col_right:
-                st.markdown("### 🎯 Confidence Gauge")
-                fig_gauge = create_confidence_gauge(result['confidence'])
-                st.plotly_chart(fig_gauge, use_container_width=True)
-            
-            # Detailed breakdown
-            st.markdown("### 📋 Detailed Analysis")
-            
-            # Sort probabilities
-            sorted_probs = sorted(
-                result['all_probabilities'].items(),
-                key=lambda x: x[1],
-                reverse=True
-            )
-            
-            for i, (program, prob) in enumerate(sorted_probs):
-                if i == 0:
-                    color = "#d1fae5"
-                    icon = "🥇"
-                elif i == 1:
-                    color = "#fef3c7"
-                    icon = "🥈"
-                else:
-                    color = "#fee2e2"
-                    icon = "🥉"
-                
-                st.markdown(f"""
-                    <div style='background-color: {color}; padding: 15px; border-radius: 8px; 
-                    margin: 10px 0; border-left: 4px solid {"#4caf50" if i == 0 else "#ff9800" if i == 1 else "#f44336"}'>
-                        <h4 style='margin: 0;'>{icon} {program}</h4>
-                        <div style='background-color: #f0f0f0; border-radius: 10px; height: 30px; 
-                        margin-top: 10px; overflow: hidden;'>
-                            <div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                            height: 100%; width: {prob*100}%; display: flex; align-items: center; 
-                            justify-content: center; color: white; font-weight: bold;'>
-                                {prob:.1%}
-                            </div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Recommendations
-            st.markdown("---")
-            st.markdown("### 💡 Recommendations")
-            
-            if result['confidence'] > 0.8:
-                st.success(f"""
-                    ✅ **High Confidence Prediction!** 
-                    
-                    The model is very confident that **{result['predicted_program']}** is the right 
-                    program for your profile. This recommendation is based on strong alignment 
-                    between your inputs and historical data.
-                """)
-            elif result['confidence'] > 0.6:
-                st.info(f"""
-                    ℹ️ **Moderate Confidence Prediction**
-                    
-                    The model suggests **{result['predicted_program']}** with moderate confidence. 
-                    Consider exploring the second-ranked option as well: 
-                    **{sorted_probs[1][0]}** ({sorted_probs[1][1]:.1%})
-                """)
-            else:
-                st.warning(f"""
-                    ⚠️ **Lower Confidence Prediction**
-                    
-                    The prediction shows lower confidence. This might be due to:
-                    - Limited input information provided
-                    - Uncommon combination of features
-                    - Consider providing more details for better accuracy
-                    
-                    Top 2 recommendations:
-                    1. **{sorted_probs[0][0]}** ({sorted_probs[0][1]:.1%})
-                    2. **{sorted_probs[1][0]}** ({sorted_probs[1][1]:.1%})
-                """)
-
+            display_results(result)
+    
     # Footer
     st.markdown("---")
     st.markdown("""
-        <div style='text-align: center; color: #6b7280; padding: 20px;'>
+        <div style='text-align: center; color: #6b7280; padding: 1rem;'>
             <p>🎓 Academic Program Predictor | Powered by Machine Learning</p>
-            <p style='font-size: 12px;'>Built with Streamlit, scikit-learn, and Plotly</p>
+            <p style='font-size: 0.875rem;'>Built with Streamlit & XGBoost</p>
         </div>
     """, unsafe_allow_html=True)
 
+# ============================================================================
+# RUN APPLICATION
+# ============================================================================
 if __name__ == "__main__":
-
     main()
-
-
