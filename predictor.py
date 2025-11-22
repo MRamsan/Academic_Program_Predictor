@@ -1,6 +1,8 @@
 import os
+os.environ["PYTHONWATCHMAN_DISABLE"] = "true"
 os.environ["STREAMLIT_WATCH_SYSTEM"] = "false"
 os.environ["ST_DISABLE_FILE_WATCHER"] = "1"
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -526,4 +528,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
