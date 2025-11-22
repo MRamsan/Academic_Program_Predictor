@@ -7,6 +7,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import warnings
 warnings.filterwarnings('ignore')
+import os
+os.environ["STREAMLIT_WATCH_SYSTEM"] = "false"
 
 # Page configuration
 st.set_page_config(
@@ -520,4 +522,5 @@ def main():
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
+
     main()
