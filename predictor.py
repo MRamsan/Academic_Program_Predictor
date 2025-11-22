@@ -1,3 +1,6 @@
+import os
+os.environ["STREAMLIT_WATCH_SYSTEM"] = "false"
+os.environ["ST_DISABLE_FILE_WATCHER"] = "1"
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,8 +10,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import warnings
 warnings.filterwarnings('ignore')
-import os
-os.environ["STREAMLIT_WATCH_SYSTEM"] = "false"
+
 
 # Page configuration
 st.set_page_config(
@@ -524,3 +526,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
